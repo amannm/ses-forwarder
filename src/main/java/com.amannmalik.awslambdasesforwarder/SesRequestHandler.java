@@ -3,16 +3,23 @@ package com.amannmalik.awslambdasesforwarder;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
 
-import javax.json.Json;
-import javax.json.JsonArray;
-import javax.json.JsonObject;
-import javax.json.JsonReader;
+import javax.json.*;
 import javax.json.stream.JsonParsingException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class SesRequestHandler implements RequestStreamHandler {
+
+    private static Map<String, Set<String>> forwardMap = new HashMap<>();
+    private static String verifiedEmail = "";
+    private static String bucket = "";
+    private static String keyPrefix = "";
 
     @Override
     public void handleRequest(InputStream input, OutputStream output, Context context) throws IOException {
@@ -38,10 +45,24 @@ public class SesRequestHandler implements RequestStreamHandler {
                 }
                 JsonObject ses = record.getJsonObject("ses");
                 JsonObject mail = ses.getJsonObject("mail");
-                JsonArray recipients = ses.getJsonObject("receipt").getJsonArray("recipients");
+
+                List<String> recipients = ses.getJsonObject("receipt").getJsonArray("recipients").stream()
+                        .map(jv -> (JsonString) jv)
+                        .map(JsonString::getString)
+                        .flatMap(r -> forwardMap.get(r).stream())
+                        .collect(Collectors.toList());
+
+                String messageId = mail.getString("messageId");
+
+                AwsGateway.fetchEmailFromS3(bucket, keyPrefix, messageId, emailString -> {
+                    String processedEmail = EmailProcessor.execute(emailString, verifiedEmail);
+                    AwsGateway.pushEmailToSes(verifiedEmail, recipients, processedEmail);
+                });
             }
         }
 
 
     }
+
+
 }
