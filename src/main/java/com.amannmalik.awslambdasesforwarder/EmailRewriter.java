@@ -3,22 +3,22 @@ package com.amannmalik.awslambdasesforwarder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class EmailProcessor {
+public class EmailRewriter {
 
-    public static String execute(String emailString, String verifiedEmail) {
+    public static String process(String emailString, String verifiedEmail) {
         Pattern headerPattern = Pattern.compile("^((?:.+\\r?\\n)*)(\\r?\\n(?:.*\\s+)*)", Pattern.MULTILINE);
         Matcher matcher = headerPattern.matcher(emailString);
         String header = matcher.group(1);
         String body = matcher.group(2);
 
-        header = ensureReplyTo(header);
+        header = ensureReplyToExists(header);
         header = replaceFromWithVerified(header, verifiedEmail);
         header = stripInvalidHeaders(header);
 
         return header + body;
     }
 
-    private static String ensureReplyTo(String header) {
+    private static String ensureReplyToExists(String header) {
         Pattern replyToPattern = Pattern.compile("^Reply-To: ", Pattern.MULTILINE | Pattern.CASE_INSENSITIVE);
         if (!replyToPattern.matcher(header).matches()) {
             Pattern compile = Pattern.compile("^From: (.*(?:\\r?\\n\\s+.*)*\\r?\\n)", Pattern.MULTILINE);

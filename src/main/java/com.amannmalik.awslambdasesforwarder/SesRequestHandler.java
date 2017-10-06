@@ -30,38 +30,54 @@ public class SesRequestHandler implements RequestStreamHandler {
             throw new RuntimeException("malformed message", e);
         }
 
-        if (object.containsKey("Records")) {
-            JsonArray records = object.getJsonArray("Records");
-            if (records.size() != 1) {
-                JsonObject record = records.getJsonObject(0);
-                if (record.containsKey("eventSource")) {
-                    String eventSource = record.getString("eventSource");
-                    if ("aws:ses".equals(eventSource)) {
-                        String eventVersion = record.getString("eventVersion");
-                        if ("1.0".equals(eventVersion)) {
-
-                        }
-                    }
-                }
-                JsonObject ses = record.getJsonObject("ses");
-                JsonObject mail = ses.getJsonObject("mail");
-
-                List<String> recipients = ses.getJsonObject("receipt").getJsonArray("recipients").stream()
-                        .map(jv -> (JsonString) jv)
-                        .map(JsonString::getString)
-                        .flatMap(r -> forwardMap.get(r).stream())
-                        .collect(Collectors.toList());
-
-                String messageId = mail.getString("messageId");
-
-                AwsGateway.fetchEmailFromS3(bucket, keyPrefix, messageId, emailString -> {
-                    String processedEmail = EmailProcessor.execute(emailString, verifiedEmail);
-                    AwsGateway.pushEmailToSes(verifiedEmail, recipients, processedEmail);
-                });
-            }
+        if (!object.containsKey("Records")) {
+            return;
         }
 
+        JsonArray records = object.getJsonArray("Records");
+        if (records.size() != 1) {
+            return;
+        }
 
+        JsonObject record = records.getJsonObject(0);
+        if (!record.containsKey("eventSource")) {
+            return;
+        }
+
+        String eventSource = record.getString("eventSource");
+        if (!"aws:ses".equals(eventSource)) {
+            return;
+        }
+
+        String eventVersion = record.getString("eventVersion");
+        if (!"1.0".equals(eventVersion)) {
+            return;
+        }
+
+        JsonObject ses = record.getJsonObject("ses");
+
+        List<String> recipients = ses.getJsonObject("receipt").getJsonArray("recipients").stream()
+                .map(jv -> (JsonString) jv)
+                .map(JsonString::getString)
+                .collect(Collectors.toList());
+
+        String messageId = ses.getJsonObject("mail").getString("messageId");
+
+        forward(messageId, recipients);
+    }
+
+    private static List<String> mapRecipients(List<String> originalRecipients) {
+        return originalRecipients.stream()
+                .flatMap(r -> forwardMap.get(r).stream())
+                .collect(Collectors.toList());
+    }
+
+    private static void forward(String messageId, List<String> recipients) {
+        AwsGateway.fetchEmailFromS3(bucket, keyPrefix, messageId, emailString -> {
+            String processedEmail = EmailRewriter.process(emailString, verifiedEmail);
+            List<String> newRecipients = mapRecipients(recipients);
+            AwsGateway.pushEmailToSes(verifiedEmail, newRecipients, processedEmail);
+        });
     }
 
 
