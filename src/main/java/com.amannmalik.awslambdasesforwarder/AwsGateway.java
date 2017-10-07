@@ -5,7 +5,6 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.ses.SESClient;
 import software.amazon.awssdk.services.ses.model.RawMessage;
 import software.amazon.awssdk.services.ses.model.SendRawEmailRequest;
-import software.amazon.awssdk.services.ses.model.SendRawEmailResponse;
 
 import java.io.ByteArrayOutputStream;
 import java.io.UnsupportedEncodingException;
@@ -15,25 +14,27 @@ import java.util.List;
 
 public class AwsGateway {
 
-    public static String fetchEmailFromS3(String bucket, String keyPrefix, String messageId) {
+    public static String pullStringFromS3(String bucket, String key) {
+
+        GetObjectRequest request = GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build();
 
         ByteArrayOutputStream result = new ByteArrayOutputStream();
 
-        S3Client client = S3Client.create();
-        client.getObject(
-                GetObjectRequest.builder()
-                        .bucket(bucket)
-                        .key(keyPrefix + messageId)
-                        .build(),
-                (resp, in) -> {
-                    byte[] buffer = new byte[1024];
-                    int length;
-                    while ((length = in.read(buffer)) != -1) {
-                        result.write(buffer, 0, length);
+        try (S3Client client = S3Client.create()) {
+            client.getObject(request,
+                    (resp, in) -> {
+                        byte[] buffer = new byte[1024];
+                        int length;
+                        while ((length = in.read(buffer)) != -1) {
+                            result.write(buffer, 0, length);
+                        }
+                        return resp;
                     }
-                    return resp;
-                }
-        );
+            );
+        }
 
         try {
             return result.toString(StandardCharsets.UTF_8.name());
@@ -43,16 +44,24 @@ public class AwsGateway {
 
     }
 
-    public static void pushEmailToSes(String originalRecipient, List<String> recipients, String emailString) {
+    public static void pushStringToSes(String source, List<String> destinations, String emailString) {
+
         ByteBuffer emailBytes = ByteBuffer.wrap(emailString.getBytes(StandardCharsets.UTF_8));
-        SESClient client = SESClient.create();
-        SendRawEmailResponse sendRawEmailResponse = client.sendRawEmail(SendRawEmailRequest.builder()
-                .destinations(recipients)
-                .source(originalRecipient)
-                .rawMessage(RawMessage.builder()
-                        .data(emailBytes)
-                        .build())
-                .build());
+
+        RawMessage emailMessage = RawMessage.builder()
+                .data(emailBytes)
+                .build();
+
+        SendRawEmailRequest request = SendRawEmailRequest.builder()
+                .source(source)
+                .destinations(destinations)
+                .rawMessage(emailMessage)
+                .build();
+
+        try (SESClient client = SESClient.create()) {
+            client.sendRawEmail(request);
+        }
+
     }
 
 

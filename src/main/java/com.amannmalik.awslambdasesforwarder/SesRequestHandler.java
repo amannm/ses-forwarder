@@ -11,38 +11,45 @@ import javax.json.stream.JsonParsingException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.Collections;
-import java.util.List;
 
 public class SesRequestHandler implements RequestStreamHandler {
 
-    //private static Map<String, Set<String>> forwardMap = new HashMap<>();
-    private static String destinationEmailAddress = System.getenv("DESTINATION_EMAIL_ADDRESS");
-    private static String sourceEmailAddress = System.getenv("SOURCE_EMAIL_ADDRESS");
-    private static String bucket = System.getenv("EMAIL_BUCKET");
-    private static String keyPrefix = System.getenv("EMAIL_BUCKET_KEY_PREFIX");
-
     @Override
     public void handleRequest(InputStream input, OutputStream output, Context context) throws IOException {
+
+        String destinationEmailAddress = System.getenv("DESTINATION_EMAIL_ADDRESS");
+        if (destinationEmailAddress == null) {
+            throw new RuntimeException("environment variable 'DESTINATION_EMAIL_ADDRESS' is required");
+        }
+
+        String sourceEmailAddress = System.getenv("SOURCE_EMAIL_ADDRESS");
+        if (sourceEmailAddress == null) {
+            throw new RuntimeException("environment variable 'SOURCE_EMAIL_ADDRESS' is required");
+        }
+
+        String bucket = System.getenv("EMAIL_BUCKET");
+        if (bucket == null) {
+            throw new RuntimeException("environment variable 'EMAIL_BUCKET' is required");
+        }
+
+        String keyPrefix = System.getenv("EMAIL_BUCKET_KEY_PREFIX");
+        if (keyPrefix == null) {
+            keyPrefix = "";
+        }
 
         JsonObject ses = extractSesEvent(input);
 
         String messageId = ses.getJsonObject("mail").getString("messageId");
 
-        //TODO: allow more complex mapping than [* -> 1]
-        /*
-                List<String> recipients = ses.getJsonObject("receipt").getJsonArray("recipients").stream()
-                .map(v -> (JsonString) v)
-                .map(JsonString::getString)
-                .collect(Collectors.toList());
-                List<String> newRecipients = mapRecipients(recipients)
-         */
+        SimpleEmailForwarder forwarder = new SimpleEmailForwarder();
+        forwarder.setSourceEmailAddress(sourceEmailAddress);
+        forwarder.setDestinationEmailAddress(destinationEmailAddress);
+        forwarder.setEmailBucket(bucket);
+        forwarder.setEmailBucketKeyPrefix(keyPrefix);
+        forwarder.setEmailMessageId(messageId);
 
-        List<String> newRecipients = Collections.singletonList(destinationEmailAddress);
+        forwarder.execute();
 
-        String originalEmail = AwsGateway.fetchEmailFromS3(bucket, keyPrefix, messageId);
-        String processedEmail = EmailRewriter.process(originalEmail, sourceEmailAddress);
-        AwsGateway.pushEmailToSes(sourceEmailAddress, newRecipients, processedEmail);
     }
 
     private static JsonObject extractSesEvent(InputStream input) {
@@ -80,13 +87,6 @@ public class SesRequestHandler implements RequestStreamHandler {
 
         return record.getJsonObject("ses");
     }
-
-//    private static List<String> mapRecipients(List<String> originalRecipients) {
-//        return originalRecipients.stream()
-//                .flatMap(r -> forwardMap.get(r).stream())
-//                .collect(Collectors.toList());
-//    }
-
 
 
 }
