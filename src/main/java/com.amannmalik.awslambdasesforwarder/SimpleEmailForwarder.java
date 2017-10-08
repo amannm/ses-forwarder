@@ -1,13 +1,9 @@
 package com.amannmalik.awslambdasesforwarder;
 
-import org.apache.log4j.Logger;
-
 import java.util.Collections;
 import java.util.List;
 
 public class SimpleEmailForwarder {
-
-    private static final Logger LOG = Logger.getLogger(SimpleEmailForwarder.class);
 
     private String sourceEmailAddress;
     private String destinationEmailAddress;
@@ -36,17 +32,21 @@ public class SimpleEmailForwarder {
     }
 
     public void execute() {
+        System.out.println("execution started");
 
         List<String> newRecipients = Collections.singletonList(destinationEmailAddress);
         String emailBucketKey = emailBucketKeyPrefix + emailMessageId;
 
+        System.out.println(String.format("pulling email %s from %s/%s", emailMessageId, emailBucket, emailBucketKeyPrefix));
         String originalEmail = AwsGateway.pullStringFromS3(emailBucket, emailBucketKey);
-        LOG.info(String.format("pulled email %s from %s/%s", emailMessageId, emailBucket, emailBucketKeyPrefix));
 
+        System.out.println("rewriting email");
         String processedEmail = EmailRewriter.process(originalEmail, sourceEmailAddress);
 
+        System.out.println(String.format("pushing rewritten email %s as %s to %s", emailMessageId, sourceEmailAddress, destinationEmailAddress));
         AwsGateway.pushStringToSes(sourceEmailAddress, newRecipients, processedEmail);
-        LOG.info(String.format("pushed rewritten email %s as %s to %s", emailMessageId, sourceEmailAddress, destinationEmailAddress));
+
+        System.out.println("execution success");
     }
 
 }

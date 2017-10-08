@@ -27,8 +27,8 @@ public class EmailRewriter {
             body = "";
         }
 
-        header = rewriteFrom(header, verifiedEmail);
         header = stripInvalidHeaders(header);
+        header = rewriteFrom(header, verifiedEmail);
 
         return header + body;
     }
@@ -55,7 +55,7 @@ public class EmailRewriter {
         }
 
         // ensure the original sender's email in the 'From:' header is overwritten with a verified SES email
-        String fromName = fromHeaderValue.replace("<(.*)>", "").trim();
+        String fromName = fromHeaderValue.replaceAll("<(.*)>", "").trim();
         String modifiedFromHeader = "From: " + fromName + " <" + verifiedEmail + ">" + fromHeaderLineEnd;
         String modifiedHeader = matcher.replaceFirst(modifiedFromHeader);
 
